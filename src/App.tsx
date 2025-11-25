@@ -25,7 +25,6 @@ import {
   Check,
   Plus,
   Save,
-  Zap,
   Globe,
   Bot
 } from 'lucide-react';
