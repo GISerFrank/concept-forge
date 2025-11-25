@@ -24,7 +24,6 @@ import {
   PenLine, 
   Check,
   Plus,
-  Trash2,
   Save
 } from 'lucide-react';
 
@@ -312,15 +311,15 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, onSave, curr
 };
 
 interface DisciplineButtonProps {
-  id: string;
+  id: string; // id is kept in props interface as it's passed from parent, but handled if unused
   name: string;
   icon: React.ElementType;
   isActive: boolean;
   onClick: () => void;
-  onDelete?: (e: React.MouseEvent) => void; // Add delete capability
+  onDelete?: (e: React.MouseEvent) => void;
 }
 
-const DisciplineButton: React.FC<DisciplineButtonProps> = ({ id, name, icon: Icon, isActive, onClick, onDelete }) => (
+const DisciplineButton: React.FC<DisciplineButtonProps> = ({ name, icon: Icon, isActive, onClick, onDelete }) => (
   <button
     onClick={onClick}
     className={`relative group flex flex-col items-center justify-center p-3 rounded-xl transition-all duration-200 border ${
@@ -734,7 +733,7 @@ const ConceptForge: React.FC = () => {
                   <History className="h-3.5 w-3.5" /> 最近记录
                 </h3>
                 <div className="space-y-2">
-                  {history.slice(0, 3).map((h, i) => (
+                  {history.slice(0, 3).map((h) => (
                     <div 
                       key={h.timestamp} 
                       onClick={() => setInputText(h.text)}
@@ -943,7 +942,6 @@ const ConceptForge: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Titles and Critique Outputs... (Same as before) */}
                 {/* Extra Feature: Titles Output */}
                 {titlesResult && (
                   <div className="bg-indigo-50/50 rounded-3xl border border-indigo-100 p-6 animate-in fade-in slide-in-from-bottom-4">
@@ -996,10 +994,8 @@ const ConceptForge: React.FC = () => {
                     </div>
                   </div>
                 )}
-
               </div>
             )}
-
           </div>
         </div>
       </main>
