@@ -24,7 +24,10 @@ import {
   PenLine, 
   Check,
   Plus,
-  Save
+  Save,
+  Zap,
+  Globe,
+  Bot
 } from 'lucide-react';
 
 // --- Type Definitions ---
@@ -84,12 +87,73 @@ interface HistoryItem {
 interface PresetDiscipline {
   id: string;
   name: string;
-  iconName: string; // Store icon name string for persistence
+  iconName: string;
 }
 
 // --- Configuration & Constants ---
 
-// Mapping string names to actual Icon components
+type ProviderType = 'gemini' | 'openai' | 'deepseek';
+
+interface ModelConfig {
+  id: string;
+  name: string;
+}
+
+interface ProviderConfig {
+  id: ProviderType;
+  name: string;
+  icon: React.ElementType;
+  defaultModel: string;
+  models: ModelConfig[];
+  apiKeyKey: string; // localStorage key
+  helpLink: string;
+}
+
+// ✅ 更新：使用 Gemini 3 作为默认，并刷新各家“较新”机型清单
+const PROVIDERS: Record<ProviderType, ProviderConfig> = {
+  gemini: {
+    id: 'gemini',
+    name: 'Google Gemini',
+    icon: Sparkles,
+    // 默认切换到 Gemini 3（预览/稳定名以你的账号区域为准）
+    defaultModel: 'gemini-3-pro-preview',
+    models: [
+      { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro (Preview)' },
+      { id: 'gemini-3-pro-image-preview', name: 'Gemini 3 Pro Image (Preview)' },
+      { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash（稳定兜底）' }
+    ],
+    apiKeyKey: 'gemini_api_key',
+    helpLink: 'https://aistudio.google.com/app/apikey'
+  },
+  openai: {
+    id: 'openai',
+    name: 'OpenAI',
+    icon: Globe,
+    defaultModel: 'gpt-5.1',
+    models: [
+      { id: 'gpt-5.1', name: 'GPT-5.1（旗舰）' },
+      { id: 'gpt-5-mini', name: 'GPT-5-mini（性价比）' },
+      { id: 'gpt-4.1', name: 'GPT-4.1（稳定兜底）' },
+      { id: 'o3', name: 'o3（深度推理）' },
+      { id: 'o4-mini', name: 'o4-mini（轻量推理）' }
+    ],
+    apiKeyKey: 'openai_api_key',
+    helpLink: 'https://platform.openai.com/api-keys'
+  },
+  deepseek: {
+    id: 'deepseek',
+    name: 'DeepSeek (深度求索)',
+    icon: Bot,
+    defaultModel: 'deepseek-chat',
+    models: [
+      { id: 'deepseek-chat', name: 'DeepSeek-Chat（V3.2-Exp 非思考）' },
+      { id: 'deepseek-reasoner', name: 'DeepSeek-Reasoner（V3.2-Exp 思考）' }
+    ],
+    apiKeyKey: 'deepseek_api_key',
+    helpLink: 'https://platform.deepseek.com/api_keys'
+  }
+};
+
 const ICON_MAP: Record<string, React.ElementType> = {
   Users,
   BrainCircuit,
@@ -110,199 +174,274 @@ const DEFAULT_PRESETS: PresetDiscipline[] = [
   { id: 'general', name: '通用社科', iconName: 'Microscope' },
 ];
 
-// --- Gemini API Logic ---
+// --- API Logic Factory ---
 
-const callGeminiAPI = async <T extends AnalysisResult | CritiqueResult | TitlesResult>(
-  payloadData: ApiPayload, 
-  userApiKey?: string
-): Promise<T> => {
-  const apiKey = userApiKey || "";
-  
-  if (!apiKey) {
-    throw new Error("请先点击右上角设置您的 Gemini API Key");
-  }
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-
-  const { taskType, text, discipline, context } = payloadData;
-
-  let systemPrompt = "";
-  let userPrompt = "";
-  let responseSchema: any = {};
-
+const generateSystemPrompt = (taskType: TaskType, discipline?: string) => {
   if (taskType === 'elevate') {
-    systemPrompt = `
+    return `
       你是 "ConceptForge"，一个专业的学术写作辅助AI。你的任务是将用户的口语化文本转化为高水平的学术表达。
       
       【关键指令】：你必须完全基于【${discipline}】的学科视角、理论框架和术语体系进行分析。
       如果用户选择了特定流派（如“女性主义”或“博弈论”），请严格使用该流派的专门术语。
       
-      输出必须是严格的 JSON 格式，包含三个层级：
-      1. level1 (术语): 提取3-5个关键口语词汇，并转化为该学科下的专业术语。
-      2. level2 (机制): 用该学科的逻辑解释现象背后的因果机制。
-      3. level3 (理论): 推荐该学科下的经典理论并重写段落。
-    `;
-    userPrompt = `请对以下文本进行概念升格：\n"${text}"`;
-    responseSchema = {
-      type: "OBJECT",
-      properties: {
-        level1: {
-          type: "ARRAY",
-          items: {
-            type: "OBJECT",
-            properties: {
-              original: { type: "STRING" },
-              suggestion: { type: "STRING" },
-              type: { type: "STRING" }
-            }
-          }
-        },
-        level2: {
-          type: "OBJECT",
-          properties: {
-            mechanism: { type: "STRING" },
-            keyLogic: { type: "STRING" }
-          }
-        },
-        level3: {
-          type: "OBJECT",
-          properties: {
-            theories: { type: "ARRAY", items: { type: "STRING" } },
-            academicText: { type: "STRING" }
-          }
-        }
+      输出必须是严格的 JSON 格式，不要包含 Markdown 代码块标记（如 \`\`\`json），只返回纯 JSON 字符串。
+      JSON 结构如下：
+      {
+        "level1": [{"original": "口语词", "suggestion": "学术词", "type": "类型"}],
+        "level2": {"mechanism": "机制解释", "keyLogic": "A->B"},
+        "level3": {"theories": ["理论1", "理论2"], "academicText": "重写文本"}
       }
-    };
+    `;
   } else if (taskType === 'critique') {
-    systemPrompt = `
+    return `
       你扮演"Reviewer 2"（挑剔的学术审稿人）。基于用户的学术文本和机制，指出潜在的逻辑漏洞或理论缺陷，并提供一个替代性解释。
       请保持严厉但建设性的语气。
-    `;
-    userPrompt = `请批判以下学术逻辑：\n机制：${context?.mechanism}\n文本：${context?.academicText}`;
-    responseSchema = {
-      type: "OBJECT",
-      properties: {
-        weaknesses: { 
-          type: "ARRAY", 
-          items: { type: "STRING" },
-          description: "2-3个逻辑漏洞或未被解释的变量"
-        },
-        alternativeExplanation: { 
-          type: "STRING",
-          description: "一个基于不同视角的替代性解释"
-        },
-        verdict: {
-          type: "STRING",
-          description: "一句话总评（如：Major Revision）"
-        }
+      输出必须是严格的 JSON 格式，不要包含 Markdown 标记。
+      JSON 结构如下：
+      {
+        "weaknesses": ["漏洞1", "漏洞2"],
+        "alternativeExplanation": "替代解释",
+        "verdict": "总评"
       }
-    };
-  } else if (taskType === 'titles') {
-    systemPrompt = `
+    `;
+  } else { // titles
+    return `
       你是一个学术编辑。基于提供的摘要/段落，生成3个不同风格的顶级期刊论文标题。
-    `;
-    userPrompt = `基于此内容生成标题：\n${context?.academicText}`;
-    responseSchema = {
-      type: "OBJECT",
-      properties: {
-        colonStyle: { type: "STRING", description: "冒号式 (Topic: Specific Argument)" },
-        questionStyle: { type: "STRING", description: "提问式 (Does X affect Y?)" },
-        declarativeStyle: { type: "STRING", description: "陈述式 (Direct finding)" }
+      输出必须是严格的 JSON 格式，不要包含 Markdown 标记。
+      JSON 结构如下：
+      {
+        "colonStyle": "冒号式标题",
+        "questionStyle": "提问式标题",
+        "declarativeStyle": "陈述式标题"
       }
-    };
+    `;
   }
+};
 
-  const payload = {
-    contents: [{ parts: [{ text: userPrompt }] }],
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: responseSchema
-    }
-  };
+const generateUserPrompt = (taskType: TaskType, text?: string, context?: any) => {
+  if (taskType === 'elevate') return `请对以下文本进行概念升格：\n"${text}"`;
+  if (taskType === 'critique') return `请批判以下学术逻辑：\n机制：${context?.mechanism}\n文本：${context?.academicText}`;
+  return `基于此内容生成标题：\n${context?.academicText}`;
+};
 
-  try {
+// Unified API Caller
+const callLLM = async <T extends AnalysisResult | CritiqueResult | TitlesResult>(
+  provider: ProviderType,
+  model: string,
+  apiKey: string,
+  payloadData: ApiPayload
+): Promise<T> => {
+  if (!apiKey) throw new Error(`请在设置中配置 ${PROVIDERS[provider].name} 的 API Key`);
+
+  const { taskType, text, discipline, context } = payloadData;
+  const systemPrompt = generateSystemPrompt(taskType, discipline);
+  const userPrompt = generateUserPrompt(taskType, text, context);
+
+  // 1. Google Gemini Handler（兼容 Gemini 3 / 2.x）
+  if (provider === 'gemini') {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const payload: any = {
+      contents: [{ parts: [{ text: userPrompt }] }],
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      generationConfig: { responseMimeType: 'application/json' }
+    };
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
-    if (!response.ok) {
-      if (response.status === 400) throw new Error("API Key 无效或过期");
-      throw new Error(`API Error: ${response.statusText}`);
-    }
+    if (!response.ok) throw new Error(`Gemini API Error: ${response.statusText}`);
     const data = await response.json();
     const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!resultText) throw new Error("No data returned");
+    if (!resultText) throw new Error('No data returned');
     return JSON.parse(resultText) as T;
-  } catch (error) {
-    console.error("Gemini API Call Failed:", error);
-    throw error;
   }
+
+  // 2. OpenAI / DeepSeek Handler（OpenAI-Compatible）
+  if (provider === 'openai' || provider === 'deepseek') {
+    const baseUrl = provider === 'deepseek' 
+      ? 'https://api.deepseek.com/chat/completions' 
+      : 'https://api.openai.com/v1/chat/completions';
+
+    // ✅ 更新：更通用的 o* 系列判断（如 o3 / o4-mini 等）
+    const isOseries = /^o\d?(-|$)/.test(model);
+
+    let messages;
+    if (isOseries) {
+      // 一些 o 系列不支持 system role/严格 JSON mode，将 system 合并进 user
+      messages = [
+        { role: 'user', content: `[SYSTEM INSTRUCTION]: ${systemPrompt}\n\n[USER REQUEST]: ${userPrompt}` }
+      ];
+    } else {
+      messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ];
+    }
+
+    const payload: any = { model, messages };
+
+    // 仅非 o 系列使用严格 JSON 输出
+    if (!isOseries) {
+      payload.response_format = { type: 'json_object' };
+    }
+
+    const response = await fetch(baseUrl, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(`${PROVIDERS[provider].name} Error: ${err.error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    let resultText = data.choices?.[0]?.message?.content;
+
+    if (resultText) {
+      // 清理 ```json 包裹
+      resultText = resultText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    }
+
+    if (!resultText) throw new Error('No data returned');
+    return JSON.parse(resultText) as T;
+  }
+
+  throw new Error('Unsupported Provider');
 };
 
 // --- Components ---
 
-interface ApiKeyModalProps {
+interface ModelSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (key: string) => void;
-  currentKey: string;
+  currentProvider: ProviderType;
+  onProviderChange: (p: ProviderType) => void;
+  currentModel: string;
+  onModelChange: (m: string) => void;
+  apiKeys: Record<string, string>;
+  onApiKeySave: (provider: string, key: string) => void;
 }
 
-const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, onSave, currentKey }) => {
-  const [key, setKey] = useState(currentKey || '');
+const ModelSettingsModal: React.FC<ModelSettingsModalProps> = ({ 
+  isOpen, onClose, currentProvider, onProviderChange, currentModel, onModelChange, apiKeys, onApiKeySave 
+}) => {
+  const [tempKey, setTempKey] = useState("");
+
+  // Sync temp key input when provider changes
+  useEffect(() => {
+    setTempKey(apiKeys[PROVIDERS[currentProvider].apiKeyKey] || "");
+  }, [currentProvider, apiKeys]);
+
+  // When provider changes, automatically switch to its default model if current model doesn't belong to it
+  useEffect(() => {
+    const providerConfig = PROVIDERS[currentProvider];
+    const isModelValid = providerConfig.models.some(m => m.id === currentModel);
+    if (!isModelValid) {
+      onModelChange(providerConfig.defaultModel);
+    }
+  }, [currentProvider, currentModel, onModelChange]);
+
+  const handleSave = () => {
+    onApiKeySave(PROVIDERS[currentProvider].apiKeyKey, tempKey);
+    onClose();
+  };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 transform transition-all scale-100">
-        <div className="flex justify-between items-center mb-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-0 overflow-hidden transform transition-all scale-100 flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="bg-slate-50 border-b border-slate-100 p-5 flex justify-between items-center">
           <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <Settings className="h-5 w-5 text-indigo-600" />
-            设置 API Key
+            模型与 API 设置
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="h-5 w-5" />
           </button>
         </div>
         
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600 leading-relaxed">
-            ConceptForge 需要使用 Google Gemini API 进行分析。为了保护您的隐私并降低成本，请使用您自己的 API Key。您的 Key 仅存储在本地浏览器中。
-          </p>
-          
+        <div className="p-6 space-y-6 overflow-y-auto">
+          {/* Provider Selection Tabs */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Gemini API Key</label>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">选择模型提供商</label>
+            <div className="grid grid-cols-3 gap-2">
+              {Object.values(PROVIDERS).map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => onProviderChange(p.id)}
+                  className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${
+                    currentProvider === p.id 
+                      ? 'bg-indigo-50 border-indigo-500 text-indigo-700 ring-1 ring-indigo-500' 
+                      : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  <p.icon className={`h-5 w-5 mb-1 ${currentProvider === p.id ? 'text-indigo-600' : 'text-slate-400'}`} />
+                  <span className="text-xs font-bold">{p.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Model Selection */}
+          <div>
+             <label className="block text-xs font-bold text-slate-500 uppercase mb-2">选择模型版本</label>
+             <select 
+               value={currentModel}
+               onChange={(e) => onModelChange(e.target.value)}
+               className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+             >
+               {PROVIDERS[currentProvider].models.map(m => (
+                 <option key={m.id} value={m.id}>{m.name}</option>
+               ))}
+             </select>
+          </div>
+
+          {/* API Key Input */}
+          <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+            <label className="block text-xs font-bold text-slate-700 uppercase mb-2 flex justify-between">
+              <span>{PROVIDERS[currentProvider].name} API Key</span>
+              <a 
+                href={PROVIDERS[currentProvider].helpLink} 
+                target="_blank" 
+                rel="noreferrer"
+                className="text-indigo-600 hover:underline flex items-center gap-1 font-normal normal-case"
+              >
+                获取 Key <ExternalLink className="h-3 w-3" />
+              </a>
+            </label>
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input 
                 type="password" 
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm"
-                placeholder="AIzaSy..."
+                value={tempKey}
+                onChange={(e) => setTempKey(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm"
+                placeholder={`sk-...`}
               />
             </div>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              Key 仅存储在您的本地浏览器中，不会上传到任何服务器。
+              {currentProvider === 'deepseek' && ' DeepSeek 兼容 OpenAI 格式，性价比极高。'}
+            </p>
           </div>
+        </div>
 
-          <div className="bg-indigo-50 p-3 rounded-lg flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-indigo-600 mt-0.5 flex-shrink-0" />
-            <div className="text-xs text-indigo-800">
-              没有 Key？您可以
-              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline font-bold ml-1 inline-flex items-center">
-                在此免费获取 <ExternalLink className="h-3 w-3 ml-0.5" />
-              </a>
-            </div>
-          </div>
-
-          <button 
-            onClick={() => onSave(key)}
-            className="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-indigo-700 transition-colors shadow-md"
+        <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end">
+           <button 
+            onClick={handleSave}
+            className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold text-sm hover:bg-indigo-700 transition-colors shadow-sm"
           >
-            保存配置
+            保存并应用
           </button>
         </div>
       </div>
@@ -311,7 +450,6 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, onSave, curr
 };
 
 interface DisciplineButtonProps {
-  id: string; // id is kept in props interface as it's passed from parent, but handled if unused
   name: string;
   icon: React.ElementType;
   isActive: boolean;
@@ -348,36 +486,40 @@ const DisciplineButton: React.FC<DisciplineButtonProps> = ({ name, icon: Icon, i
 const ConceptForge: React.FC = () => {
   const [inputText, setInputText] = useState<string>("");
   
-  // Presets Management
+  // Presets & Discipline
   const [presets, setPresets] = useState<PresetDiscipline[]>(() => {
     const saved = localStorage.getItem('concept_forge_presets');
     return saved ? JSON.parse(saved) : DEFAULT_PRESETS;
   });
-
-  // Discipline State (Auto-load last used)
   const [discipline, setDiscipline] = useState<string>(() => {
-    return localStorage.getItem('concept_forge_last_discipline') || "management";
+    return localStorage.getItem('concept_forge_last_discipline') || 'management';
   });
-  
   const [customLens, setCustomLens] = useState<string>("");
   const [isEditingCustom, setIsEditingCustom] = useState<boolean>(false);
   const customInputRef = useRef<HTMLInputElement>(null);
 
-  // API Key Management
-  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || "");
+  // --- Multi-Model State ---
+  const [currentProvider, setCurrentProvider] = useState<ProviderType>(() => (localStorage.getItem('cf_provider') as ProviderType) || 'gemini');
+  // ✅ 默认模型切换为 Gemini 3 Pro Preview
+  const [currentModel, setCurrentModel] = useState<string>(() => localStorage.getItem('cf_model') || 'gemini-3-pro-preview');
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>(() => {
+    return {
+      gemini_api_key: localStorage.getItem('gemini_api_key') || "",
+      openai_api_key: localStorage.getItem('openai_api_key') || "",
+      deepseek_api_key: localStorage.getItem('deepseek_api_key') || ""
+    };
+  });
+  
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
   // States for Tasks
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
   const [isCritiquing, setIsCritiquing] = useState<boolean>(false);
   const [critiqueResult, setCritiqueResult] = useState<CritiqueResult | null>(null);
-  
   const [isGeneratingTitles, setIsGeneratingTitles] = useState<boolean>(false);
   const [titlesResult, setTitlesResult] = useState<TitlesResult | null>(null);
-
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const resultRef = useRef<HTMLDivElement>(null);
 
@@ -387,26 +529,27 @@ const ConceptForge: React.FC = () => {
     }
   }, [result]);
 
-  // Persist Presets
   useEffect(() => {
     localStorage.setItem('concept_forge_presets', JSON.stringify(presets));
   }, [presets]);
 
-  // Persist Last Discipline
   useEffect(() => {
     localStorage.setItem('concept_forge_last_discipline', discipline);
   }, [discipline]);
 
-  const saveApiKey = (key: string) => {
-    setApiKey(key);
-    localStorage.setItem('gemini_api_key', key);
-    setShowSettings(false);
+  // Persist Model Settings
+  useEffect(() => {
+    localStorage.setItem('cf_provider', currentProvider);
+    localStorage.setItem('cf_model', currentModel);
+  }, [currentProvider, currentModel]);
+
+  const handleApiKeySave = (keyName: string, keyValue: string) => {
+    setApiKeys(prev => ({ ...prev, [keyName]: keyValue }));
+    localStorage.setItem(keyName, keyValue);
   };
 
   const getDisciplineName = (id: string): string => {
-    if (id === 'custom') {
-      return customLens || '通用学术视角';
-    }
+    if (id === 'custom') return customLens || '通用学术视角';
     const found = presets.find(p => p.id === id);
     return found ? found.name : '学术通用';
   };
@@ -420,42 +563,51 @@ const ConceptForge: React.FC = () => {
 
   const handleSaveCustomAsPreset = () => {
     if (!customLens.trim()) return;
-    
     const newId = `custom_${Date.now()}`;
-    const newPreset: PresetDiscipline = {
-      id: newId,
-      name: customLens,
-      iconName: 'BookOpen' // Default icon for custom presets
-    };
-
-    setPresets(prev => [...prev, newPreset]);
-    setDiscipline(newId); // Switch to the newly created preset
-    setCustomLens(""); // Clear custom input as it's now a preset
+    setPresets(prev => [...prev, { id: newId, name: customLens, iconName: 'BookOpen' }]);
+    setDiscipline(newId);
+    setCustomLens("");
     setIsEditingCustom(false);
   };
 
   const handleDeletePreset = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    // Prevent deleting the last remaining preset if needed, or allow empty
     if (presets.length <= 1) return; 
-    
     const newPresets = presets.filter(p => p.id !== id);
     setPresets(newPresets);
+    if (discipline === id) setDiscipline(newPresets[0].id);
+  };
+
+  const executeTask = async <T extends AnalysisResult | CritiqueResult | TitlesResult>(
+    taskType: TaskType,
+    context?: any
+  ): Promise<T | null> => {
+    const activeKey = apiKeys[PROVIDERS[currentProvider].apiKeyKey];
     
-    // If we deleted the active one, switch to the first available
-    if (discipline === id) {
-      setDiscipline(newPresets[0].id);
+    if (!activeKey) {
+      setShowSettings(true);
+      return null;
+    }
+
+    try {
+      return await callLLM<T>(
+        currentProvider,
+        currentModel,
+        activeKey,
+        {
+          taskType,
+          text: inputText,
+          discipline: getDisciplineName(discipline),
+          context
+        }
+      );
+    } catch (err: any) {
+      throw err;
     }
   };
 
   const handleElevate = async () => {
     if (!inputText.trim()) return;
-    
-    if (!apiKey) {
-      setShowSettings(true);
-      return;
-    }
-
     if (discipline === 'custom' && !customLens.trim()) {
       setIsEditingCustom(true);
       setTimeout(() => customInputRef.current?.focus(), 100);
@@ -469,20 +621,14 @@ const ConceptForge: React.FC = () => {
     setTitlesResult(null);
 
     try {
-      const aiResult = await callGeminiAPI<AnalysisResult>({
-        taskType: 'elevate',
-        text: inputText,
-        discipline: getDisciplineName(discipline)
-      }, apiKey);
-      setResult(aiResult);
-      setHistory(prev => [{ 
-        text: inputText, 
-        timestamp: Date.now(),
-        label: inputText.substring(0, 20) + "..."
-      }, ...prev]);
+      const data = await executeTask<AnalysisResult>('elevate');
+      if (data) {
+        setResult(data);
+        setHistory(prev => [{ text: inputText, timestamp: Date.now(), label: inputText.substring(0, 20) + '...' }, ...prev]);
+      }
     } catch (err: any) {
-      setError(err.message || "AI 服务暂时繁忙，请稍后重试。");
-      if (err.message && err.message.includes("Key")) setShowSettings(true);
+      setError(err.message || '服务繁忙，请重试。');
+      if (err.message && err.message.includes('Key')) setShowSettings(true);
     } finally {
       setIsAnalyzing(false);
     }
@@ -492,17 +638,13 @@ const ConceptForge: React.FC = () => {
     if (!result) return;
     setIsCritiquing(true);
     try {
-      const aiResult = await callGeminiAPI<CritiqueResult>({
-        taskType: 'critique',
-        context: {
-          mechanism: result.level2.mechanism,
-          academicText: result.level3.academicText
-        }
-      }, apiKey);
-      setCritiqueResult(aiResult);
+      const data = await executeTask<CritiqueResult>('critique', {
+        mechanism: result.level2.mechanism,
+        academicText: result.level3.academicText
+      });
+      if (data) setCritiqueResult(data);
     } catch (err: any) {
-      console.error(err);
-      setError("审稿人功能出错: " + err.message);
+      setError('审稿人功能出错: ' + err.message);
     } finally {
       setIsCritiquing(false);
     }
@@ -512,23 +654,19 @@ const ConceptForge: React.FC = () => {
     if (!result) return;
     setIsGeneratingTitles(true);
     try {
-      const aiResult = await callGeminiAPI<TitlesResult>({
-        taskType: 'titles',
-        context: {
-          academicText: result.level3.academicText
-        }
-      }, apiKey);
-      setTitlesResult(aiResult);
+      const data = await executeTask<TitlesResult>('titles', {
+        academicText: result.level3.academicText
+      });
+      if (data) setTitlesResult(data);
     } catch (err: any) {
-      console.error(err);
-      setError("标题生成出错: " + err.message);
+      setError('标题生成出错: ' + err.message);
     } finally {
       setIsGeneratingTitles(false);
     }
   };
 
   const copyToClipboard = (text: string) => {
-    const textArea = document.createElement("textarea");
+    const textArea = document.createElement('textarea');
     textArea.value = text;
     document.body.appendChild(textArea);
     textArea.select();
@@ -536,14 +674,20 @@ const ConceptForge: React.FC = () => {
     document.body.removeChild(textArea);
   };
 
+  const ActiveProviderIcon = PROVIDERS[currentProvider].icon;
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-indigo-100 selection:text-indigo-900 pb-20">
       
-      <ApiKeyModal 
+      <ModelSettingsModal 
         isOpen={showSettings} 
         onClose={() => setShowSettings(false)} 
-        onSave={saveApiKey}
-        currentKey={apiKey}
+        currentProvider={currentProvider}
+        onProviderChange={setCurrentProvider}
+        currentModel={currentModel}
+        onModelChange={setCurrentModel}
+        apiKeys={apiKeys}
+        onApiKeySave={handleApiKeySave}
       />
 
       <div className="fixed inset-0 z-0 pointer-events-none" 
@@ -561,20 +705,24 @@ const ConceptForge: React.FC = () => {
                 ConceptForge <span className="font-normal text-slate-400">Pro</span>
               </h1>
               <p className="text-[10px] text-indigo-600 font-medium tracking-wider uppercase flex items-center gap-1">
-                <Cpu className="h-3 w-3" /> Powered by Gemini 2.5
+                <Cpu className="h-3 w-3" /> Powered by Multi-LLM
               </p>
             </div>
           </div>
           
           <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center px-3 py-1 bg-slate-100 rounded-full text-xs text-slate-500 font-medium border border-slate-200">
-              <span className={`w-2 h-2 rounded-full mr-2 ${apiKey ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
-              {apiKey ? 'Ready' : 'Setup Required'}
-            </div>
+            <button 
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 rounded-full text-xs font-medium text-slate-600 hover:text-indigo-600 transition-all shadow-sm"
+            >
+              <ActiveProviderIcon className="h-3.5 w-3.5" />
+              <span>{PROVIDERS[currentProvider].name}</span>
+              <div className={`w-1.5 h-1.5 rounded-full ${apiKeys[PROVIDERS[currentProvider].apiKeyKey] ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
+            </button>
             <button 
               onClick={() => setShowSettings(true)}
               className="h-9 w-9 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:text-indigo-600 hover:border-indigo-200 shadow-sm cursor-pointer transition-all"
-              title="设置 API Key"
+              title="设置 API Key 与 模型"
             >
               <Settings className="h-5 w-5" />
             </button>
@@ -603,7 +751,6 @@ const ConceptForge: React.FC = () => {
                 {presets.map((preset) => (
                   <DisciplineButton
                     key={preset.id}
-                    id={preset.id}
                     name={preset.name}
                     icon={ICON_MAP[preset.iconName] || BookOpen}
                     isActive={discipline === preset.id}
@@ -613,7 +760,7 @@ const ConceptForge: React.FC = () => {
                 ))}
               </div>
 
-              {/* 自定义透镜输入区 */}
+              {/* Custom Lens Input */}
               <div 
                 className={`relative rounded-xl border transition-all duration-300 overflow-hidden ${
                   discipline === 'custom' 
@@ -652,7 +799,6 @@ const ConceptForge: React.FC = () => {
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[10px] text-indigo-400">按回车确认，或保存为常用</span>
                       <div className="flex gap-2">
-                        {/* Save as Preset Button */}
                         {customLens && (
                           <button 
                             onClick={handleSaveCustomAsPreset}
@@ -677,7 +823,6 @@ const ConceptForge: React.FC = () => {
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden group ring-1 ring-slate-200 transition-shadow hover:shadow-2xl hover:shadow-slate-200/60">
-              {/* ... (输入区域 Input Area 保持不变) ... */}
               <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex justify-between items-center">
                 <span className="text-sm font-semibold text-slate-700">原始语料输入</span>
                 <div className="flex gap-1">
@@ -726,7 +871,6 @@ const ConceptForge: React.FC = () => {
               </div>
             </div>
 
-            {/* History section remains same */}
             {history.length > 0 && (
               <div className="bg-white/50 rounded-xl p-4 border border-slate-200/60">
                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -748,7 +892,6 @@ const ConceptForge: React.FC = () => {
           </div>
 
           <div className="lg:col-span-7 space-y-8" ref={resultRef}>
-            {/* ... (Error, Loading, Result sections same as before) ... */}
             
             {error && (
               <div className="p-4 bg-red-50 text-red-700 rounded-xl border border-red-200 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
@@ -768,13 +911,18 @@ const ConceptForge: React.FC = () => {
                 <h3 className="text-lg font-semibold text-slate-600">等待输入</h3>
                 <p className="text-sm mt-2 text-center max-w-sm text-slate-500">
                   AI 将基于<span className="text-indigo-600 font-medium mx-1">顶级期刊标准</span>
-                  为您重构文本。请输入内容并点击“开始升格”。
+                  为您重构文本。
                 </p>
-                {!apiKey && (
-                  <button onClick={() => setShowSettings(true)} className="mt-6 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-200 transition-colors">
-                    配置 API Key 以开始
-                  </button>
-                )}
+                <div className="flex gap-2 mt-4">
+                  {Object.values(PROVIDERS).map(p => {
+                    if (apiKeys[p.apiKeyKey]) return null;
+                    return (
+                      <button key={p.id} onClick={() => setShowSettings(true)} className="px-3 py-1.5 bg-white border border-slate-200 text-xs text-slate-500 rounded-md hover:border-indigo-300 transition-colors">
+                        配置 {p.name}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             )}
 
@@ -787,7 +935,10 @@ const ConceptForge: React.FC = () => {
                       <div className="absolute inset-0 rounded-full border-4 border-indigo-100 border-t-indigo-600 animate-spin"></div>
                    </div>
                    <div>
-                     <h3 className="text-lg font-medium text-slate-800">正在运用 {getDisciplineName(discipline)} 视角分析...</h3>
+                     <h3 className="text-lg font-medium text-slate-800">
+                       正在通过 {PROVIDERS[currentProvider].name} 分析...
+                     </h3>
+                     <p className="text-sm text-indigo-600 font-mono mt-1">{currentModel}</p>
                      <div className="mt-2 flex justify-center gap-1">
                        <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
                        <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
@@ -800,7 +951,6 @@ const ConceptForge: React.FC = () => {
 
             {result && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-                
                 {/* Level 1: Terminology Map */}
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden">
                   <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50/50 to-white flex justify-between items-center">
@@ -917,7 +1067,7 @@ const ConceptForge: React.FC = () => {
                       </div>
                     </div>
                     
-                    {/* New Action Buttons Area */}
+                    {/* Action Buttons */}
                     <div className="mt-6 pt-6 border-t border-slate-200/60 flex flex-wrap gap-3 items-center">
                       <span className="text-xs text-slate-400 font-sans mr-auto">AI Tools:</span>
                       
@@ -942,7 +1092,7 @@ const ConceptForge: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Extra Feature: Titles Output */}
+                {/* Feature: Titles Output */}
                 {titlesResult && (
                   <div className="bg-indigo-50/50 rounded-3xl border border-indigo-100 p-6 animate-in fade-in slide-in-from-bottom-4">
                     <div className="flex justify-between items-center mb-4">
@@ -964,7 +1114,7 @@ const ConceptForge: React.FC = () => {
                   </div>
                 )}
 
-                {/* Extra Feature: Critique Output */}
+                {/* Feature: Critique Output */}
                 {critiqueResult && (
                   <div className="bg-amber-50/50 rounded-3xl border border-amber-100 p-6 animate-in fade-in slide-in-from-bottom-4">
                     <div className="flex justify-between items-center mb-4">
@@ -987,7 +1137,7 @@ const ConceptForge: React.FC = () => {
                          <p className="text-sm text-slate-700 leading-relaxed">{critiqueResult.alternativeExplanation}</p>
                       </div>
                       <div className="flex justify-end">
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border-amber-200 border">
                           Verdict: {critiqueResult.verdict}
                         </span>
                       </div>
