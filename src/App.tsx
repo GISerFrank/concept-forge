@@ -831,15 +831,16 @@ const ConceptForge: React.FC = () => {
                 </div>
               </div>
               
-              <div className="relative flex-1 min-h-[280px]">
+              <div className="relative flex-1 min-h-[500px]">
                 <textarea
-                  className="w-full h-full p-5 bg-white text-slate-700 placeholder-slate-300 focus:outline-none resize-none text-sm leading-relaxed font-mono"
-                  placeholder={`在此输入您的论文草稿、口语化想法或田野笔记...
-                  
-示例："在目前的企业管理中，很多员工觉得老板说的话必须听，哪怕是错的。这种现象很普遍..."`}
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                />
+                    // 👇 修改 2 (可选): 将 resize-none 改为 resize-y，允许用户手动拖拽拉长
+                    className="w-full h-full p-5 bg-white text-slate-700 placeholder-slate-300 focus:outline-none resize-y text-sm leading-relaxed font-mono rounded-b-2xl"
+                    placeholder={`在此输入您的论文草稿、口语化想法或田野笔记...
+                    
+                示例："在目前的企业管理中，很多员工觉得老板说的话必须听，哪怕是错的。这种现象很普遍..."`}
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                  />
                 
                 <div className="absolute bottom-4 right-4 left-4 flex items-center justify-between bg-white/90 backdrop-blur p-2 rounded-xl border border-slate-100 shadow-sm">
                   <span className="text-[10px] text-slate-400 px-2">
