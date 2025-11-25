@@ -26,7 +26,8 @@ import {
   Plus,
   Save,
   Globe,
-  Bot
+  Bot,
+  GripHorizontal
 } from 'lucide-react';
 
 // --- Type Definitions ---
@@ -484,6 +485,10 @@ const DisciplineButton: React.FC<DisciplineButtonProps> = ({ name, icon: Icon, i
 
 const ConceptForge: React.FC = () => {
   const [inputText, setInputText] = useState<string>("");
+
+  // ✅ 新增：控制输入框高度的状态 (默认 500px，更宽敞)
+  const [inputHeight, setInputHeight] = useState<number>(500);
+  const isResizingInput = useRef<boolean>(false);
   
   // Presets & Discipline
   const [presets, setPresets] = useState<PresetDiscipline[]>(() => {
@@ -522,6 +527,32 @@ const ConceptForge: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const resultRef = useRef<HTMLDivElement>(null);
 
+  // ✅ 新增：处理拖拽的逻辑
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingInput.current) return;
+      // 限制最小高度为 300px，最大高度为 1200px (防止过小或过大)
+      const newHeight = Math.max(300, Math.min(1200, e.clientY - 250)); // 250 是一个估算的顶部偏移修正，或使用 ref 计算更精确，这里简化处理体验已足够好
+      setInputHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      isResizingInput.current = false;
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = 'auto';
+    };
+
+    if (isResizingInput) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   useEffect(() => {
     if (result && resultRef.current) {
       resultRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -541,6 +572,13 @@ const ConceptForge: React.FC = () => {
     localStorage.setItem('cf_provider', currentProvider);
     localStorage.setItem('cf_model', currentModel);
   }, [currentProvider, currentModel]);
+
+  const startResizing = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingInput.current = true;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none'; // 防止拖拽时选中文字
+  };
 
   const handleApiKeySave = (keyName: string, keyValue: string) => {
     setApiKeys(prev => ({ ...prev, [keyName]: keyValue }));
@@ -821,55 +859,71 @@ const ConceptForge: React.FC = () => {
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden group ring-1 ring-slate-200 transition-shadow hover:shadow-2xl hover:shadow-slate-200/60">
-              <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex justify-between items-center">
-                <span className="text-sm font-semibold text-slate-700">原始语料输入</span>
-                <div className="flex gap-1">
-                  <span className="w-2 h-2 rounded-full bg-slate-300"></span>
-                  <span className="w-2 h-2 rounded-full bg-slate-300"></span>
-                  <span className="w-2 h-2 rounded-full bg-slate-300"></span>
-                </div>
-              </div>
-              
-              <div className="relative flex-1 min-h-[500px]">
-                <textarea
-                    // 👇 修改 2 (可选): 将 resize-none 改为 resize-y，允许用户手动拖拽拉长
-                    className="w-full h-full p-5 bg-white text-slate-700 placeholder-slate-300 focus:outline-none resize-y text-sm leading-relaxed font-mono rounded-b-2xl"
-                    placeholder={`在此输入您的论文草稿、口语化想法或田野笔记...
-                    
-                示例："在目前的企业管理中，很多员工觉得老板说的话必须听，哪怕是错的。这种现象很普遍..."`}
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                  />
-                
-                <div className="absolute bottom-4 right-4 left-4 flex items-center justify-between bg-white/90 backdrop-blur p-2 rounded-xl border border-slate-100 shadow-sm">
-                  <span className="text-[10px] text-slate-400 px-2">
-                    {inputText.length} chars
-                  </span>
-                  <button
-                    onClick={handleElevate}
-                    disabled={isAnalyzing || !inputText}
-                    className={`flex items-center gap-2 px-5 py-2 rounded-lg font-semibold text-sm shadow-md transition-all duration-300 ${
-                      isAnalyzing || !inputText
-                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:shadow-lg hover:shadow-indigo-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-95'
-                    }`}
-                  >
-                    {isAnalyzing ? (
-                      <>
-                        <div className="animate-spin h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full"></div>
-                        思考中...
-                      </>
-                    ) : (
-                      <>
-                        <ArrowUpCircle className="h-4 w-4" />
-                        开始升格
-                      </>
-                    )}
-                  </button>
-                </div>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden group ring-1 ring-slate-200 transition-shadow hover:shadow-2xl hover:shadow-slate-200/60">
+            {/* Header */}
+            <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex justify-between items-center select-none">
+              <span className="text-sm font-semibold text-slate-700">原始语料输入</span>
+              <div className="flex gap-1">
+                <span className="w-2 h-2 rounded-full bg-slate-300"></span>
+                <span className="w-2 h-2 rounded-full bg-slate-300"></span>
+                <span className="w-2 h-2 rounded-full bg-slate-300"></span>
               </div>
             </div>
+            
+            {/* Resizable Container */}
+            <div 
+              className="relative w-full transition-[height] duration-75 ease-linear"
+              style={{ height: `${inputHeight}px` }}
+            >
+              <textarea
+                className="w-full h-full p-6 pb-24 bg-white text-slate-700 placeholder-slate-300 focus:outline-none resize-none text-sm leading-relaxed font-mono scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent"
+                placeholder={`在此输入您的论文草稿、口语化想法或田野笔记...
+
+          示例："在目前的企业管理中，很多员工觉得老板说的话必须听，哪怕是错的。这种现象很普遍..."`}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                spellCheck={false}
+              />
+              
+              {/* Floating Action Bar (悬浮操作栏) */}
+              <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between bg-white/80 backdrop-blur-md p-2 pl-4 rounded-xl border border-slate-200/60 shadow-lg shadow-slate-200/20 z-10">
+                <span className="text-[10px] text-slate-400 font-medium font-mono">
+                  {inputText.length} chars
+                </span>
+                <button
+                  onClick={handleElevate}
+                  disabled={isAnalyzing || !inputText}
+                  className={`flex items-center gap-2 px-5 py-2 rounded-lg font-semibold text-sm shadow-md transition-all duration-300 ${
+                    isAnalyzing || !inputText
+                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:shadow-lg hover:shadow-indigo-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-95'
+                  }`}
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <div className="animate-spin h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full"></div>
+                      思考中...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowUpCircle className="h-4 w-4" />
+                      开始升格
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Custom Resize Handle (自定义拖拽手柄) */}
+              <div 
+                onMouseDown={startResizing}
+                className="absolute bottom-0 left-0 right-0 h-4 cursor-row-resize flex items-center justify-center hover:bg-slate-50 transition-colors group/resize z-20"
+                title="拖动调整高度"
+              >
+                <div className="w-full h-[1px] bg-slate-100 absolute top-0"></div>
+                <GripHorizontal className="h-4 w-4 text-slate-300 group-hover/resize:text-indigo-400 transition-colors" />
+              </div>
+            </div>
+          </div>
 
             {history.length > 0 && (
               <div className="bg-white/50 rounded-xl p-4 border border-slate-200/60">
