@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  BookOpen,
-  Sparkles,
-  ArrowUpCircle,
-  Library,
-  Layers,
+import { 
+  BookOpen, 
+  Sparkles, 
+  ArrowUpCircle, 
+  Library, 
+  Layers, 
   BrainCircuit,
   GraduationCap,
   Microscope,
@@ -20,8 +20,12 @@ import {
   Settings,
   Key,
   ExternalLink,
-  Copy
-  // 移除了 LucideIcon，因为它导致了运行时错误
+  Copy,
+  PenLine, 
+  Check,
+  Plus,
+  Trash2,
+  Save
 } from 'lucide-react';
 
 // --- Type Definitions ---
@@ -78,10 +82,39 @@ interface HistoryItem {
   label: string;
 }
 
+interface PresetDiscipline {
+  id: string;
+  name: string;
+  iconName: string; // Store icon name string for persistence
+}
+
+// --- Configuration & Constants ---
+
+// Mapping string names to actual Icon components
+const ICON_MAP: Record<string, React.ElementType> = {
+  Users,
+  BrainCircuit,
+  GraduationCap,
+  Layers,
+  Microscope,
+  BookOpen,
+  Sparkles,
+  PenLine
+};
+
+const DEFAULT_PRESETS: PresetDiscipline[] = [
+  { id: 'management', name: '管理学', iconName: 'Users' },
+  { id: 'sociology', name: '社会学', iconName: 'Users' },
+  { id: 'psychology', name: '心理学', iconName: 'BrainCircuit' },
+  { id: 'education', name: '教育学', iconName: 'GraduationCap' },
+  { id: 'cs', name: '计算机', iconName: 'Layers' },
+  { id: 'general', name: '通用社科', iconName: 'Microscope' },
+];
+
 // --- Gemini API Logic ---
 
 const callGeminiAPI = async <T extends AnalysisResult | CritiqueResult | TitlesResult>(
-  payloadData: ApiPayload,
+  payloadData: ApiPayload, 
   userApiKey?: string
 ): Promise<T> => {
   const apiKey = userApiKey || "";
@@ -101,12 +134,14 @@ const callGeminiAPI = async <T extends AnalysisResult | CritiqueResult | TitlesR
   if (taskType === 'elevate') {
     systemPrompt = `
       你是 "ConceptForge"，一个专业的学术写作辅助AI。你的任务是将用户的口语化文本转化为高水平的学术表达。
-      学科视角：【${discipline}】。
+      
+      【关键指令】：你必须完全基于【${discipline}】的学科视角、理论框架和术语体系进行分析。
+      如果用户选择了特定流派（如“女性主义”或“博弈论”），请严格使用该流派的专门术语。
       
       输出必须是严格的 JSON 格式，包含三个层级：
-      1. level1 (术语): 3-5个关键口语词汇对应的专业术语。
-      2. level2 (机制): 解释现象背后的因果机制。
-      3. level3 (理论): 推荐理论并重写段落。
+      1. level1 (术语): 提取3-5个关键口语词汇，并转化为该学科下的专业术语。
+      2. level2 (机制): 用该学科的逻辑解释现象背后的因果机制。
+      3. level3 (理论): 推荐该学科下的经典理论并重写段落。
     `;
     userPrompt = `请对以下文本进行概念升格：\n"${text}"`;
     responseSchema = {
@@ -148,12 +183,12 @@ const callGeminiAPI = async <T extends AnalysisResult | CritiqueResult | TitlesR
     responseSchema = {
       type: "OBJECT",
       properties: {
-        weaknesses: {
-          type: "ARRAY",
+        weaknesses: { 
+          type: "ARRAY", 
           items: { type: "STRING" },
           description: "2-3个逻辑漏洞或未被解释的变量"
         },
-        alternativeExplanation: {
+        alternativeExplanation: { 
           type: "STRING",
           description: "一个基于不同视角的替代性解释"
         },
@@ -244,8 +279,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, onSave, curr
             <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Gemini API Key</label>
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                type="password"
+              <input 
+                type="password" 
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm"
@@ -264,7 +299,7 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, onSave, curr
             </div>
           </div>
 
-          <button
+          <button 
             onClick={() => onSave(key)}
             className="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-indigo-700 transition-colors shadow-md"
           >
@@ -279,23 +314,65 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ isOpen, onClose, onSave, curr
 interface DisciplineButtonProps {
   id: string;
   name: string;
-  icon: React.ElementType; // 修复：使用 React.ElementType 替代 LucideIcon
+  icon: React.ElementType;
+  isActive: boolean;
+  onClick: () => void;
+  onDelete?: (e: React.MouseEvent) => void; // Add delete capability
 }
+
+const DisciplineButton: React.FC<DisciplineButtonProps> = ({ id, name, icon: Icon, isActive, onClick, onDelete }) => (
+  <button
+    onClick={onClick}
+    className={`relative group flex flex-col items-center justify-center p-3 rounded-xl transition-all duration-200 border ${
+      isActive
+        ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200 transform scale-[1.02]'
+        : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:bg-indigo-50/50'
+    }`}
+  >
+    {onDelete && (
+      <div 
+        onClick={onDelete}
+        className="absolute -top-1.5 -right-1.5 bg-white text-slate-400 hover:text-red-500 rounded-full p-0.5 border border-slate-200 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+        title="删除此预设"
+      >
+        <X className="h-3 w-3" />
+      </div>
+    )}
+    <Icon className={`h-5 w-5 mb-1.5 transition-colors ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-indigo-500'}`} />
+    <span className="text-xs font-medium tracking-wide truncate w-full text-center px-1">{name}</span>
+    {isActive && (
+      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full opacity-50"></div>
+    )}
+  </button>
+);
 
 const ConceptForge: React.FC = () => {
   const [inputText, setInputText] = useState<string>("");
-  const [discipline, setDiscipline] = useState<string>("management");
   
+  // Presets Management
+  const [presets, setPresets] = useState<PresetDiscipline[]>(() => {
+    const saved = localStorage.getItem('concept_forge_presets');
+    return saved ? JSON.parse(saved) : DEFAULT_PRESETS;
+  });
+
+  // Discipline State (Auto-load last used)
+  const [discipline, setDiscipline] = useState<string>(() => {
+    return localStorage.getItem('concept_forge_last_discipline') || "management";
+  });
+  
+  const [customLens, setCustomLens] = useState<string>("");
+  const [isEditingCustom, setIsEditingCustom] = useState<boolean>(false);
+  const customInputRef = useRef<HTMLInputElement>(null);
+
   // API Key Management
   const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || "");
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
-  // States for Main Elevation Task
+  // States for Tasks
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // States for New Gemini Features
   const [isCritiquing, setIsCritiquing] = useState<boolean>(false);
   const [critiqueResult, setCritiqueResult] = useState<CritiqueResult | null>(null);
   
@@ -311,6 +388,16 @@ const ConceptForge: React.FC = () => {
     }
   }, [result]);
 
+  // Persist Presets
+  useEffect(() => {
+    localStorage.setItem('concept_forge_presets', JSON.stringify(presets));
+  }, [presets]);
+
+  // Persist Last Discipline
+  useEffect(() => {
+    localStorage.setItem('concept_forge_last_discipline', discipline);
+  }, [discipline]);
+
   const saveApiKey = (key: string) => {
     setApiKey(key);
     localStorage.setItem('gemini_api_key', key);
@@ -318,15 +405,48 @@ const ConceptForge: React.FC = () => {
   };
 
   const getDisciplineName = (id: string): string => {
-    const map: Record<string, string> = {
-      'management': '管理学/组织行为学',
-      'sociology': '社会学',
-      'psychology': '应用心理学',
-      'education': '教育学',
-      'cs': '计算机科学/人机交互',
-      'general': '通用社会科学'
+    if (id === 'custom') {
+      return customLens || '通用学术视角';
+    }
+    const found = presets.find(p => p.id === id);
+    return found ? found.name : '学术通用';
+  };
+
+  const handleCustomLensSubmit = () => {
+    if (customLens.trim()) {
+      setDiscipline('custom');
+      setIsEditingCustom(false);
+    }
+  };
+
+  const handleSaveCustomAsPreset = () => {
+    if (!customLens.trim()) return;
+    
+    const newId = `custom_${Date.now()}`;
+    const newPreset: PresetDiscipline = {
+      id: newId,
+      name: customLens,
+      iconName: 'BookOpen' // Default icon for custom presets
     };
-    return map[id] || '学术通用';
+
+    setPresets(prev => [...prev, newPreset]);
+    setDiscipline(newId); // Switch to the newly created preset
+    setCustomLens(""); // Clear custom input as it's now a preset
+    setIsEditingCustom(false);
+  };
+
+  const handleDeletePreset = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    // Prevent deleting the last remaining preset if needed, or allow empty
+    if (presets.length <= 1) return; 
+    
+    const newPresets = presets.filter(p => p.id !== id);
+    setPresets(newPresets);
+    
+    // If we deleted the active one, switch to the first available
+    if (discipline === id) {
+      setDiscipline(newPresets[0].id);
+    }
   };
 
   const handleElevate = async () => {
@@ -334,6 +454,12 @@ const ConceptForge: React.FC = () => {
     
     if (!apiKey) {
       setShowSettings(true);
+      return;
+    }
+
+    if (discipline === 'custom' && !customLens.trim()) {
+      setIsEditingCustom(true);
+      setTimeout(() => customInputRef.current?.focus(), 100);
       return;
     }
 
@@ -350,8 +476,8 @@ const ConceptForge: React.FC = () => {
         discipline: getDisciplineName(discipline)
       }, apiKey);
       setResult(aiResult);
-      setHistory(prev => [{
-        text: inputText,
+      setHistory(prev => [{ 
+        text: inputText, 
         timestamp: Date.now(),
         label: inputText.substring(0, 20) + "..."
       }, ...prev]);
@@ -411,34 +537,17 @@ const ConceptForge: React.FC = () => {
     document.body.removeChild(textArea);
   };
 
-  const DisciplineButton: React.FC<DisciplineButtonProps> = ({ id, name, icon: Icon }) => (
-    <button
-      onClick={() => setDiscipline(id)}
-      className={`relative group flex flex-col items-center justify-center p-3 rounded-xl transition-all duration-200 border ${
-        discipline === id
-          ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200 transform scale-[1.02]'
-          : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:bg-indigo-50/50'
-      }`}
-    >
-      <Icon className={`h-5 w-5 mb-1.5 transition-colors ${discipline === id ? 'text-white' : 'text-slate-400 group-hover:text-indigo-500'}`} />
-      <span className="text-xs font-medium tracking-wide">{name}</span>
-      {discipline === id && (
-        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-white rounded-full opacity-50"></div>
-      )}
-    </button>
-  );
-
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 selection:bg-indigo-100 selection:text-indigo-900 pb-20">
       
-      <ApiKeyModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
+      <ApiKeyModal 
+        isOpen={showSettings} 
+        onClose={() => setShowSettings(false)} 
         onSave={saveApiKey}
         currentKey={apiKey}
       />
 
-      <div className="fixed inset-0 z-0 pointer-events-none"
+      <div className="fixed inset-0 z-0 pointer-events-none" 
            style={{ backgroundImage: 'radial-gradient(#e0e7ff 1px, transparent 1px)', backgroundSize: '24px 24px', opacity: 0.4 }}>
       </div>
 
@@ -463,7 +572,7 @@ const ConceptForge: React.FC = () => {
               <span className={`w-2 h-2 rounded-full mr-2 ${apiKey ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`}></span>
               {apiKey ? 'Ready' : 'Setup Required'}
             </div>
-            <button
+            <button 
               onClick={() => setShowSettings(true)}
               className="h-9 w-9 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:text-indigo-600 hover:border-indigo-200 shadow-sm cursor-pointer transition-all"
               title="设置 API Key"
@@ -484,21 +593,92 @@ const ConceptForge: React.FC = () => {
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                   <Library className="h-3.5 w-3.5" /> 学科透镜 (Lens)
                 </label>
-                <span className="text-xs text-indigo-600 font-medium bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
-                  {getDisciplineName(discipline)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-indigo-600 font-medium bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 max-w-[150px] truncate">
+                    {getDisciplineName(discipline)}
+                  </span>
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <DisciplineButton id="management" name="管理学" icon={Users} />
-                <DisciplineButton id="sociology" name="社会学" icon={Users} />
-                <DisciplineButton id="psychology" name="心理学" icon={BrainCircuit} />
-                <DisciplineButton id="education" name="教育学" icon={GraduationCap} />
-                <DisciplineButton id="cs" name="计算机" icon={Layers} />
-                <DisciplineButton id="general" name="通用社科" icon={Microscope} />
+              
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                {presets.map((preset) => (
+                  <DisciplineButton
+                    key={preset.id}
+                    id={preset.id}
+                    name={preset.name}
+                    icon={ICON_MAP[preset.iconName] || BookOpen}
+                    isActive={discipline === preset.id}
+                    onClick={() => setDiscipline(preset.id)}
+                    onDelete={presets.length > 1 ? (e) => handleDeletePreset(e, preset.id) : undefined}
+                  />
+                ))}
+              </div>
+
+              {/* 自定义透镜输入区 */}
+              <div 
+                className={`relative rounded-xl border transition-all duration-300 overflow-hidden ${
+                  discipline === 'custom' 
+                    ? 'bg-indigo-50 border-indigo-400 shadow-md ring-1 ring-indigo-400' 
+                    : 'bg-white border-slate-200 hover:border-indigo-200'
+                }`}
+              >
+                {!isEditingCustom && discipline !== 'custom' ? (
+                  <button 
+                    onClick={() => {
+                      setDiscipline('custom');
+                      setIsEditingCustom(true);
+                      setTimeout(() => customInputRef.current?.focus(), 100);
+                    }}
+                    className="w-full p-3 flex items-center justify-center gap-2 text-slate-500 hover:text-indigo-600 transition-colors"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span className="text-sm font-medium">新增/自定义透镜</span>
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-2 p-3 bg-indigo-50">
+                    <div className="flex items-center gap-2">
+                      <div className="bg-indigo-200 p-1.5 rounded-lg text-indigo-700">
+                        <PenLine className="h-4 w-4" />
+                      </div>
+                      <input
+                        ref={customInputRef}
+                        type="text"
+                        value={customLens}
+                        onChange={(e) => setCustomLens(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleCustomLensSubmit()}
+                        placeholder="输入学科或理论 (如: 博弈论)..."
+                        className="flex-1 bg-transparent border-b border-indigo-300 text-sm font-medium text-indigo-900 placeholder-indigo-400 focus:outline-none focus:border-indigo-600 pb-1"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-[10px] text-indigo-400">按回车确认，或保存为常用</span>
+                      <div className="flex gap-2">
+                        {/* Save as Preset Button */}
+                        {customLens && (
+                          <button 
+                            onClick={handleSaveCustomAsPreset}
+                            className="flex items-center gap-1 px-2 py-1 bg-white text-indigo-600 text-xs rounded border border-indigo-200 hover:bg-indigo-100 shadow-sm transition-colors"
+                            title="保存到上方快捷列表"
+                          >
+                            <Save className="h-3 w-3" />
+                            存为预设
+                          </button>
+                        )}
+                        <button 
+                          onClick={handleCustomLensSubmit}
+                          className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden group ring-1 ring-slate-200 transition-shadow hover:shadow-2xl hover:shadow-slate-200/60">
+              {/* ... (输入区域 Input Area 保持不变) ... */}
               <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex justify-between items-center">
                 <span className="text-sm font-semibold text-slate-700">原始语料输入</span>
                 <div className="flex gap-1">
@@ -547,6 +727,7 @@ const ConceptForge: React.FC = () => {
               </div>
             </div>
 
+            {/* History section remains same */}
             {history.length > 0 && (
               <div className="bg-white/50 rounded-xl p-4 border border-slate-200/60">
                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -554,8 +735,8 @@ const ConceptForge: React.FC = () => {
                 </h3>
                 <div className="space-y-2">
                   {history.slice(0, 3).map((h, i) => (
-                    <div
-                      key={h.timestamp}
+                    <div 
+                      key={h.timestamp} 
                       onClick={() => setInputText(h.text)}
                       className="text-xs text-slate-600 bg-white p-2.5 rounded-lg border border-slate-100 hover:border-indigo-200 hover:text-indigo-700 cursor-pointer transition-colors truncate"
                     >
@@ -568,6 +749,7 @@ const ConceptForge: React.FC = () => {
           </div>
 
           <div className="lg:col-span-7 space-y-8" ref={resultRef}>
+            {/* ... (Error, Loading, Result sections same as before) ... */}
             
             {error && (
               <div className="p-4 bg-red-50 text-red-700 rounded-xl border border-red-200 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
@@ -643,7 +825,7 @@ const ConceptForge: React.FC = () => {
                               {item.type}
                             </span>
                           </div>
-                          <button
+                          <button 
                              onClick={() => copyToClipboard(item.suggestion)}
                              className="opacity-0 group-hover:opacity-100 p-2 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg transition-all"
                           >
@@ -727,7 +909,7 @@ const ConceptForge: React.FC = () => {
                         <div className="font-serif text-base md:text-lg leading-8 text-slate-800 text-justify">
                           {result.level3.academicText}
                         </div>
-                        <button
+                        <button 
                           onClick={() => copyToClipboard(result.level3.academicText)}
                           className="absolute -right-2 -top-2 p-2 bg-white hover:bg-indigo-600 text-slate-400 hover:text-white rounded-lg border border-slate-200 hover:border-transparent shadow-sm transition-all opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100"
                         >
@@ -740,7 +922,7 @@ const ConceptForge: React.FC = () => {
                     <div className="mt-6 pt-6 border-t border-slate-200/60 flex flex-wrap gap-3 items-center">
                       <span className="text-xs text-slate-400 font-sans mr-auto">AI Tools:</span>
                       
-                      <button
+                      <button 
                         onClick={handleGenerateTitles}
                         disabled={isGeneratingTitles}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded-lg text-xs font-medium transition-all shadow-sm disabled:opacity-50"
@@ -749,7 +931,7 @@ const ConceptForge: React.FC = () => {
                         标题工坊
                       </button>
 
-                      <button
+                      <button 
                         onClick={handleCritique}
                         disabled={isCritiquing}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-200 text-amber-700 hover:bg-amber-50 rounded-lg text-xs font-medium transition-all shadow-sm disabled:opacity-50"
@@ -761,6 +943,7 @@ const ConceptForge: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Titles and Critique Outputs... (Same as before) */}
                 {/* Extra Feature: Titles Output */}
                 {titlesResult && (
                   <div className="bg-indigo-50/50 rounded-3xl border border-indigo-100 p-6 animate-in fade-in slide-in-from-bottom-4">
