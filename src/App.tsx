@@ -29,6 +29,8 @@ import {
   Bot,
   GripHorizontal
 } from 'lucide-react';
+import { driver } from "driver.js";
+import "driver.js/dist/driver.css"; // 引入默认样式
 
 // --- Type Definitions ---
 
@@ -573,6 +575,73 @@ const ConceptForge: React.FC = () => {
     localStorage.setItem('cf_model', currentModel);
   }, [currentProvider, currentModel]);
 
+  // ✅ 新增：Driver.js 引导逻辑
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem('cf_has_seen_onboarding');
+
+    // 如果没看过引导，且页面加载稍作等待后启动
+    if (!hasSeenTour) {
+      const driverObj = driver({
+        showProgress: true, // 显示步数 (1/4)
+        animate: true,      // 启用动画
+        doneBtnText: '开始探索',
+        nextBtnText: '下一步',
+        prevBtnText: '上一步',
+        allowClose: false,  // 禁止点击遮罩关闭，强制走完或点跳过
+        steps: [
+          {
+            element: '#tour-lens-section',
+            popover: {
+              title: '第一步：选择学科透镜',
+              description: '选择您的学科背景或自定义理论框架，AI 将基于此视角进行深度分析。',
+              side: 'bottom',
+              align: 'start'
+            }
+          },
+          {
+            element: '#tour-api-settings',
+            popover: {
+              title: '第二步：配置引擎',
+              description: '点击此处配置 Gemini 或 DeepSeek API Key。建议使用 DeepSeek，性价比极高。',
+              side: 'left',
+              align: 'start'
+            }
+          },
+          {
+            element: '#tour-input-area',
+            popover: {
+              title: '第三步：输入语料',
+              description: '支持粘贴草稿、口语想法或笔记。现在支持拖拽调整高度了！',
+              side: 'right',
+              align: 'start'
+            }
+          },
+          {
+            element: '#tour-action-btn',
+            popover: {
+              title: '第四步：一键升格',
+              description: '点击即可生成概念映射、机制重构和理论对话。',
+              side: 'top',
+              align: 'center'
+            }
+          }
+        ],
+        onDestroyStarted: () => {
+          // 当引导结束或被跳过时，记录状态
+          if (!driverObj.hasNextStep() || confirm('确定要跳过引导吗？')) {
+            driverObj.destroy();
+            localStorage.setItem('cf_has_seen_onboarding', 'true');
+          }
+        },
+      });
+
+      // 延迟 1 秒启动，确保 DOM 渲染完毕且用户视觉稳定
+      setTimeout(() => {
+        driverObj.drive();
+      }, 1000);
+    }
+  }, []);
+
   const startResizing = (e: React.MouseEvent) => {
     e.preventDefault();
     isResizingInput.current = true;
@@ -747,7 +816,7 @@ const ConceptForge: React.FC = () => {
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div id="tour-api-settings" className="flex items-center gap-4">
             <button 
               onClick={() => setShowSettings(true)}
               className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 rounded-full text-xs font-medium text-slate-600 hover:text-indigo-600 transition-all shadow-sm"
@@ -772,7 +841,7 @@ const ConceptForge: React.FC = () => {
           
           <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-24">
             
-            <div className="bg-white/70 backdrop-blur-sm p-5 rounded-2xl border border-white shadow-xl shadow-slate-200/50 ring-1 ring-slate-200/50">
+            <div id="tour-lens-section" className="bg-white/70 backdrop-blur-sm p-5 rounded-2xl border border-white shadow-xl shadow-slate-200/50 ring-1 ring-slate-200/50">
               <div className="flex items-center justify-between mb-4">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                   <Library className="h-3.5 w-3.5" /> 学科透镜 (Lens)
@@ -859,7 +928,7 @@ const ConceptForge: React.FC = () => {
               </div>
             </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden group ring-1 ring-slate-200 transition-shadow hover:shadow-2xl hover:shadow-slate-200/60">
+          <div id="tour-input-area" className="bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden group ring-1 ring-slate-200 transition-shadow hover:shadow-2xl hover:shadow-slate-200/60">
             {/* Header */}
             <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex justify-between items-center select-none">
               <span className="text-sm font-semibold text-slate-700">原始语料输入</span>
@@ -890,7 +959,7 @@ const ConceptForge: React.FC = () => {
                 <span className="text-[10px] text-slate-400 font-medium font-mono">
                   {inputText.length} chars
                 </span>
-                <button
+                <button id="tour-action-btn"
                   onClick={handleElevate}
                   disabled={isAnalyzing || !inputText}
                   className={`flex items-center gap-2 px-5 py-2 rounded-lg font-semibold text-sm shadow-md transition-all duration-300 ${

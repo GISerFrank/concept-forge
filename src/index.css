@@ -1,3 +1,97 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* --- Driver.js 引导样式覆盖 (ConceptForge 主题) --- */
+
+/* 1. 气泡卡片主体：圆角、白底、阴影 */
+.driver-popover {
+    background-color: #ffffff !important;
+    border-radius: 16px !important;
+    padding: 24px !important;
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1) !important;
+    border: 1px solid #e2e8f0 !important; /* slate-200 */
+    color: #334155 !important; /* slate-700 */
+    font-family: inherit !important;
+    max-width: 350px !important;
+}
+
+/* 2. 标题：深色、加粗 */
+.driver-popover-title {
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    color: #1e293b !important; /* slate-800 */
+    margin-bottom: 8px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+/* 3. 描述文字：灰色 */
+.driver-popover-description {
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+    color: #64748b !important; /* slate-500 */
+    margin-bottom: 20px !important;
+}
+
+/* 4. 底部按钮容器 */
+.driver-popover-footer {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    margin-top: 10px !important;
+}
+
+/* 5. "下一步" / "完成" 按钮：Indigo 品牌色 */
+.driver-popover-next-btn {
+    background-color: #4f46e5 !important; /* indigo-600 */
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 8px 16px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    text-shadow: none !important;
+    transition: all 0.2s !important;
+}
+.driver-popover-next-btn:hover {
+    background-color: #4338ca !important; /* indigo-700 */
+    transform: translateY(-1px);
+}
+
+/* 6. "上一步" 按钮：简约描边风格 */
+.driver-popover-prev-btn {
+    background-color: transparent !important;
+    color: #94a3b8 !important; /* slate-400 */
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    text-shadow: none !important;
+}
+.driver-popover-prev-btn:hover {
+    color: #64748b !important;
+    background-color: #f8fafc !important;
+}
+
+/* 7. 进度指示器 (Step 1 of 4) */
+.driver-popover-progress-text {
+    color: #cbd5e1 !important; /* slate-300 */
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+}
+
+/* 8. 关闭按钮 (右上角 X) */
+.driver-popover-close-btn {
+    color: #cbd5e1 !important;
+    top: 16px !important;
+    right: 16px !important;
+    transition: color 0.2s;
+}
+.driver-popover-close-btn:hover {
+    color: #64748b !important;
+}
