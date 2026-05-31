@@ -109,4 +109,4 @@ concept-forge-main/
 
 ## 📄 License
 
-本项目为私有项目，保留所有权利。
+本项目基于 [MIT License](./LICENSE) 开源。

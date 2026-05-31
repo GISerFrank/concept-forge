@@ -1,8 +1,16 @@
 {
   "name": "concept-forge",
-  "private": true,
-  "version": "0.0.0",
+  "private": false,
+  "version": "1.0.0",
   "type": "module",
+  "description": "Academic writing concept elevation engine — transform colloquial ideas into journal-grade scholarly prose",
+  "keywords": ["academic-writing", "ai", "llm", "concept-elevation", "react", "typescript"],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
